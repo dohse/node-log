@@ -2,13 +2,22 @@
 
 const util = require('util');
 
+const assign = require('lodash.assign');
 const getenv = require('getenv');
 const isError = require('lodash.iserror');
 const isString = require('lodash.isstring');
 
 const logLevels = ['fatal', 'error', 'warn', 'info', 'debug'];
 
+function jsonifyError(error) {
+  const stack = error.stack.split('\n').map(
+    (line) => line.replace(/ {4}/g, '\t')
+  ).join('\n');
+  return JSON.stringify(assign({}, error, {stack})).replace(/ /g, '\\u0020');
+}
+
 const logStack = getenv.bool('LOG_STACK', true);
+const logStackJson = getenv.bool('LOG_STACK_JSON', false);
 function forward(target, prefix) {
   return (format, ...args_) => {
     const placeholders = isString(format) ?
@@ -20,11 +29,15 @@ function forward(target, prefix) {
 
     const errors = (logStack ? args_ : [])
       .filter(isError)
-      .map((error) => util.inspect(error, false, 3));
+      .map((error) => logStackJson ?
+        jsonifyError(error) :
+        util.inspect(error, false, 3)
+      );
 
+    const errorSeparator = logStackJson ? ' ' : '\n';
     const rest = args_.slice(placeholders).filter((value) => !isError(value));
     console[target]('%s', util.format(prefix + format, ...args, ...rest) +
-                          ['', ...errors].join('\n'));
+                          ['', ...errors].join(errorSeparator));
   };
 }
 
